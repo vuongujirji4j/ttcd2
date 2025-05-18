@@ -128,7 +128,8 @@ def get_chamcong():
         cursor = con.cursor()
         cursor.execute("SELECT * FROM ChamCong")
         cols = [desc[0] for desc in cursor.description]
-        records = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        records = [dict(zip(cols, [str(val) if val is not None else None for val in row])) 
+                  for row in cursor.fetchall()]
         cursor.close()
         return jsonify(records)
     except Exception as e:
