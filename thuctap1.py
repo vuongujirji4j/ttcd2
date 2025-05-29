@@ -471,6 +471,24 @@ def add_donnghiphep():
         return jsonify({"message": "Thêm đơn nghỉ phép thành công", "MaDon": new_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+# Cập nhật đơn nghỉ phép
+@app.route('/donnghiphep/<int:maDon>', methods=['PUT'])
+def update_donnghiphep(maDon):
+    try:
+        data = request.get_json()
+        cursor = con.cursor()
+        cursor.execute("""
+            UPDATE DonNghiPhep 
+            SET MaNhanVien=?, NgayBatDau=?, NgayKetThuc=?, LyDo=?, TrangThai=?
+            WHERE MaDon=?""",
+            (data.get('MaNhanVien'), data.get('NgayBatDau'), data.get('NgayKetThuc'),
+             data.get('LyDo'), data.get('TrangThai'), maDon))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Cập nhật đơn nghỉ phép thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)
