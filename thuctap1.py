@@ -489,6 +489,17 @@ def update_donnghiphep(maDon):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Xóa đơn nghỉ phép
+@app.route('/donnghiphep/<int:maDon>', methods=['DELETE'])
+def delete_donnghiphep(maDon):
+    try:
+        cursor = con.cursor()
+        cursor.execute("DELETE FROM DonNghiPhep WHERE MaDon = ?", (maDon,))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Xóa đơn nghỉ phép thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
