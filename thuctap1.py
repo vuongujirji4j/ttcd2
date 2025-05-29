@@ -83,7 +83,18 @@ def update_nhanvien(maNV):
         return jsonify({"message": "Cập nhật nhân viên thành công"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+# Xóa nhân viên
+@app.route('/nhanvien/<int:maNV>', methods=['DELETE'])
+def delete_nhanvien(maNV):
+    try:
+        cursor = con.cursor()
+        cursor.execute("DELETE FROM NhanVien WHERE MaNhanVien = ?", (maNV,))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Xóa nhân viên thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 # ──────────────────────────────
 # 2. QUẢN LÝ PHÒNG BAN
 # Lấy danh sách phòng ban
@@ -118,6 +129,36 @@ def add_phongban():
         return jsonify({"message": "Thêm phòng ban thành công", "MaPhongBan": new_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+# Cập nhật phòng ban
+@app.route('/phongban/<int:maPB>', methods=['PUT'])
+def update_phongban(maPB):
+    try:
+        data = request.get_json()
+        ten = data.get('TenPhongBan')
+        mota = data.get('MoTa')
+        truongphong = data.get('TruongPhong')
+
+        cursor = con.cursor()
+        cursor.execute("UPDATE PhongBan SET TenPhongBan = ?, MoTa = ?, TruongPhong = ? WHERE MaPhongBan = ?",
+                       (ten, mota, truongphong, maPB))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Cập nhật phòng ban thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Xóa phòng ban
+@app.route('/phongban/<int:maPB>', methods=['DELETE'])
+def delete_phongban(maPB):
+    try:
+        cursor = con.cursor()
+        cursor.execute("DELETE FROM PhongBan WHERE MaPhongBan = ?", (maPB,))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Xóa phòng ban thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # ──────────────────────────────
 # 3. QUẢN LÝ CHẤM CÔNG
@@ -153,6 +194,36 @@ def add_chamcong():
         new_id = cursor.fetchone()[0]
         cursor.close()
         return jsonify({"message": "Thêm chấm công thành công", "MaChamCong": new_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+# Cập nhật chấm công
+@app.route('/chamcong/<int:maCC>', methods=['PUT'])
+def update_chamcong(maCC):
+    try:
+        data = request.get_json()
+        ma_nv = data.get('MaNhanVien')
+        ngay = data.get('Ngay')
+        gio_vao = data.get('GioVao')
+        gio_ra = data.get('GioRa')
+
+        cursor = con.cursor()
+        cursor.execute("UPDATE ChamCong SET MaNhanVien=?, Ngay=?, GioVao=?, GioRa=? WHERE MaChamCong=?",
+                       (ma_nv, ngay, gio_vao, gio_ra, maCC))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Cập nhật chấm công thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Xóa chấm công
+@app.route('/chamcong/<int:maCC>', methods=['DELETE'])
+def delete_chamcong(maCC):
+    try:
+        cursor = con.cursor()
+        cursor.execute("DELETE FROM ChamCong WHERE MaChamCong = ?", (maCC,))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Xóa chấm công thành công"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -196,6 +267,35 @@ def add_luong():
         return jsonify({"message": "Thêm thông tin lương thành công", "MaLuong": new_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+# Cập nhật thông tin lương
+@app.route('/luong/<int:maLuong>', methods=['PUT'])
+def update_luong(maLuong):
+    try:
+        data = request.get_json()
+        cursor = con.cursor()
+        cursor.execute("""
+            UPDATE Luong 
+            SET MaNhanVien=?, Thang=?, Nam=?, LuongCoBan=?, PhuCap=?, KhauTru=?, LuongThucNhan=?
+            WHERE MaLuong=?""",
+            (data.get('MaNhanVien'), data.get('Thang'), data.get('Nam'), data.get('LuongCoBan'),
+             data.get('PhuCap'), data.get('KhauTru'), data.get('LuongThucNhan'), maLuong))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Cập nhật thông tin lương thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Xóa thông tin lương
+@app.route('/luong/<int:maLuong>', methods=['DELETE'])
+def delete_luong(maLuong):
+    try:
+        cursor = con.cursor()
+        cursor.execute("DELETE FROM Luong WHERE MaLuong = ?", (maLuong,))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Xóa thông tin lương thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ──────────────────────────────
 # 5. QUẢN LÝ ĐÁNH GIÁ (DANHGIA)
@@ -232,6 +332,34 @@ def add_danhgia():
         new_id = cursor.fetchone()[0]
         cursor.close()
         return jsonify({"message": "Thêm đánh giá thành công", "MaDanhGia": new_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+# Cập nhật đánh giá
+@app.route('/danhgia/<int:maDG>', methods=['PUT'])
+def update_danhgia(maDG):
+    try:
+        data = request.get_json()
+        cursor = con.cursor()
+        cursor.execute("""
+            UPDATE DanhGia 
+            SET MaNhanVien=?, KyDanhGia=?, DiemSo=?, NhanXet=?
+            WHERE MaDanhGia=?""",
+            (data.get('MaNhanVien'), data.get('KyDanhGia'), data.get('DiemSo'), data.get('NhanXet'), maDG))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Cập nhật đánh giá thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Xóa đánh giá
+@app.route('/danhgia/<int:maDG>', methods=['DELETE'])
+def delete_danhgia(maDG):
+    try:
+        cursor = con.cursor()
+        cursor.execute("DELETE FROM DanhGia WHERE MaDanhGia = ?", (maDG,))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Xóa đánh giá thành công"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -273,6 +401,35 @@ def add_hopdong():
         new_id = cursor.fetchone()[0]
         cursor.close()
         return jsonify({"message": "Thêm hợp đồng thành công", "MaHopDong": new_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+# Cập nhật hợp đồng
+@app.route('/hopdong/<int:maHD>', methods=['PUT'])
+def update_hopdong(maHD):
+    try:
+        data = request.get_json()
+        cursor = con.cursor()
+        cursor.execute("""
+            UPDATE HopDong 
+            SET MaNhanVien=?, LoaiHopDong=?, NgayBatDau=?, NgayKetThuc=?, LuongCoBan=?, PhuCap=?, TrangThai=?
+            WHERE MaHopDong=?""",
+            (data.get('MaNhanVien'), data.get('LoaiHopDong'), data.get('NgayBatDau'), data.get('NgayKetThuc'),
+             data.get('LuongCoBan'), data.get('PhuCap'), data.get('TrangThai'), maHD))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Cập nhật hợp đồng thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Xóa hợp đồng
+@app.route('/hopdong/<int:maHD>', methods=['DELETE'])
+def delete_hopdong(maHD):
+    try:
+        cursor = con.cursor()
+        cursor.execute("DELETE FROM HopDong WHERE MaHopDong = ?", (maHD,))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Xóa hợp đồng thành công"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
