@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_cors import CORS
-from routes import api
+from thuctap.backend.routes import api
 from models import DatabaseConnection
 from config import CONNECTION_STRING
 import pyodbc
