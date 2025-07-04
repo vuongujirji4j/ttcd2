@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import pyodbc
 
+
 # Cấu hình kết nối đến SQL Server
 conn_str = (
     "Driver={ODBC Driver 17 for SQL Server};"
@@ -501,6 +502,104 @@ def delete_donnghiphep(maDon):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+#lấy danh sách role
+@app.route('/role', methods=['GET'])
+def get_roles():
+    try:
+        cursor = con.cursor()
+        cursor.execute("SELECT * FROM Role")
+        cols = [desc[0] for desc in cursor.description]
+        roles = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        cursor.close()
+        return jsonify(roles)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+#Thêm Role mới
+@app.route('/role', methods=['POST'])
+def add_role():
+    try:
+        data = request.get_json()
+        role_name = data.get('RoleName')
+        cursor = con.cursor()
+        cursor.execute("INSERT INTO Role (RoleName) VALUES (?)", (role_name,))
+        con.commit()
+        cursor.execute("SELECT @@IDENTITY")
+        new_id = cursor.fetchone()[0]
+        cursor.close()
+        return jsonify({"message": "Thêm quyền thành công", "RoleID": new_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+#Lấy danh sách User
+@app.route('/user', methods=['GET'])
+def get_users():
+    try:
+        cursor = con.cursor()
+        cursor.execute("""
+            SELECT u.UserID, u.Username, u.Email, u.MaNhanVien, u.RoleID, r.RoleName
+            FROM [User] u
+            JOIN Role r ON u.RoleID = r.RoleID
+        """)
+        cols = [desc[0] for desc in cursor.description]
+        users = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        cursor.close()
+        return jsonify(users)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+#Thêm tài khoản User
+@app.route('/user', methods=['POST'])
+def add_user():
+    try:
+        data = request.get_json()
+        username = data.get('Username')
+        email = data.get('Email')
+        password = data.get('PasswordHash')  # Plain text, nên hash sau
+        ma_nv = data.get('MaNhanVien')  # Có thể None
+        role_id = data.get('RoleID')
+
+        cursor = con.cursor()
+        cursor.execute("""
+            INSERT INTO [User] (Username, Email, PasswordHash, MaNhanVien, RoleID)
+            VALUES (?, ?, ?, ?, ?)""", (username, email, password, ma_nv, role_id))
+        con.commit()
+        cursor.execute("SELECT @@IDENTITY")
+        new_id = cursor.fetchone()[0]
+        cursor.close()
+        return jsonify({"message": "Tạo tài khoản thành công", "UserID": new_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+#Cập nhật User
+@app.route('/user/<int:user_id>', methods=['PUT'])
+def update_user(user_id):
+    try:
+        data = request.get_json()
+        username = data.get('Username')
+        email = data.get('Email')
+        password = data.get('PasswordHash')
+        ma_nv = data.get('MaNhanVien')
+        role_id = data.get('RoleID')
+
+        cursor = con.cursor()
+        cursor.execute("""
+            UPDATE [User]
+            SET Username = ?, Email = ?, PasswordHash = ?, MaNhanVien = ?, RoleID = ?
+            WHERE UserID = ?""", (username, email, password, ma_nv, role_id, user_id))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Cập nhật tài khoản thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+#Xóa User
+@app.route('/user/<int:user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    try:
+        cursor = con.cursor()
+        cursor.execute("DELETE FROM [User] WHERE UserID = ?", (user_id,))
+        con.commit()
+        cursor.close()
+        return jsonify({"message": "Xóa tài khoản thành công"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
+

@@ -1,6 +1,9 @@
-from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash
+from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash, session
 from models import NhanVien, PhongBan, ChamCong
 from datetime import datetime
+from werkzeug.security import check_password_hash
+import pyodbc
+from config import CONNECTION_STRING
 
 api = Blueprint('api', __name__)
 
@@ -231,4 +234,34 @@ def delete_chamcong(id):
         return jsonify({'error': 'Chấm công không tồn tại'}), 404
     
     ChamCong.delete(id)
-    return jsonify({'message': 'Xóa chấm công thành công'}) 
+    return jsonify({'message': 'Xóa chấm công thành công'})
+
+@api.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        try:
+            conn = pyodbc.connect(CONNECTION_STRING)
+            cursor = conn.cursor()
+            cursor.execute("SELECT UserID, Username, PasswordHash, RoleID, MaNhanVien FROM [User] WHERE Username = ?", (username,))
+            user = cursor.fetchone()
+            conn.close()
+            if user and user.PasswordHash == password:
+                session['user_id'] = user.UserID
+                session['username'] = user.Username
+                session['role_id'] = user.RoleID
+                session['ma_nhanvien'] = user.MaNhanVien
+                flash('Đăng nhập thành công!', 'success')
+                return redirect(url_for('home'))
+            else:
+                flash('Sai tên đăng nhập hoặc mật khẩu!', 'danger')
+        except Exception as e:
+            flash(f'Lỗi đăng nhập: {str(e)}', 'danger')
+    return render_template('login.html')
+
+@api.route('/logout')
+def logout():
+    session.clear()
+    flash('Đã đăng xuất!', 'success')
+    return redirect(url_for('api.login')) 

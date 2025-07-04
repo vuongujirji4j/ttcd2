@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_cors import CORS
-from thuctap.backend.routes import api
+from routes import api
 from models import DatabaseConnection
 from config import CONNECTION_STRING
 import pyodbc
 from datetime import datetime
+from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'  # Thay đổi secret key của bạn
@@ -18,8 +19,33 @@ def get_db_connection():
     conn = pyodbc.connect(CONNECTION_STRING)
     return conn
 
-# Thêm route cho trang chủ
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('api.login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def require_roles(*role_names):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'role_id' not in session:
+                return redirect(url_for('api.login'))
+            role_id = session.get('role_id')
+            # Map role_id sang tên quyền
+            role_map = {1: 'Admin', 2: 'TruongPhong', 3: 'NhanVien'}
+            user_role = role_map.get(role_id)
+            if user_role not in role_names:
+                flash('Bạn không có quyền truy cập chức năng này!', 'danger')
+                return redirect(url_for('home'))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
 @app.route('/')
+@login_required
 def home():
     # Thử kết nối database
     try:
@@ -49,6 +75,7 @@ def home():
         return f"Không thể kết nối database: {str(e)}", 500
 
 @app.route('/nhanvien')
+@login_required
 def nhanvien_list():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -79,6 +106,8 @@ def nhanvien_list():
     return render_template('nhanvien_list.html', nhanviens=nhanviens, phongban_list=phongban_list)
 
 @app.route('/nhanvien/add', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin')
 def add_nhanvien():
     if request.method == 'POST':
         try:
@@ -118,6 +147,8 @@ def add_nhanvien():
     return render_template('nhanvien_add.html', phongbans=phongbans)
 
 @app.route('/nhanvien/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin')
 def edit_nhanvien(id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -149,6 +180,8 @@ def edit_nhanvien(id):
     return render_template('nhanvien_edit.html', nhanvien=nhanvien, phongbans=phongbans)
 
 @app.route('/nhanvien/delete/<int:id>', methods=['POST'])
+@login_required
+@require_roles('Admin')
 def delete_nhanvien(id):
     try:
         conn = get_db_connection()
@@ -177,6 +210,7 @@ def delete_nhanvien(id):
     return redirect(url_for('nhanvien_list'))
 
 @app.route('/phongban')
+@login_required
 def phongban_list():
     try:
         conn = DatabaseConnection.get_connection()
@@ -195,6 +229,8 @@ def phongban_list():
         return render_template('phongban_list.html', phongbans=[])
 
 @app.route('/phongban/add', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin')
 def add_phongban():
     try:
         conn = DatabaseConnection.get_connection()
@@ -223,6 +259,8 @@ def add_phongban():
         return render_template('phongban_add.html', nhanviens=[])
 
 @app.route('/phongban/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin')
 def edit_phongban(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -258,6 +296,8 @@ def edit_phongban(id):
         return redirect(url_for('phongban_list'))
 
 @app.route('/phongban/delete/<int:id>', methods=['POST'])
+@login_required
+@require_roles('Admin')
 def delete_phongban(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -274,6 +314,7 @@ def delete_phongban(id):
         return redirect(url_for('phongban_list'))
 
 @app.route('/chamcong')
+@login_required
 def chamcong_list():
     try:
         conn = DatabaseConnection.get_connection()
@@ -318,38 +359,56 @@ def chamcong_list():
         return render_template('chamcong_list.html', nhanviens=[])
 
 @app.route('/chamcong/add', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin', 'TruongPhong', 'NhanVien')
 def add_chamcong():
-    try:
-        conn = DatabaseConnection.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT nv.MaNhanVien, nv.HoTen, pb.TenPhongBan FROM NhanVien nv LEFT JOIN PhongBan pb ON nv.MaPhongBan = pb.MaPhongBan")
-        nhanviens = cursor.fetchall()
-        # Tạo dict MaNhanVien -> TenPhongBan để JS sử dụng
-        pb_map = {str(nv.MaNhanVien): nv.TenPhongBan for nv in nhanviens}
-        if request.method == 'POST':
-            cursor.execute("""
-                INSERT INTO ChamCong (MaNhanVien, Ngay, GioVao, GioRa, TrangThai)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                request.form['MaNhanVien'],
-                request.form['Ngay'],
-                request.form['GioVao'],
-                request.form['GioRa'],
-                request.form.get('TrangThai', '')
-            ))
-            conn.commit()
+    if request.method == 'POST':
+        if session.get('role_id') == 3:  # Nhân viên
+            ma_nv_form = int(request.form.get('MaNhanVien'))
+            if ma_nv_form != session.get('ma_nhanvien'):
+                flash('Bạn chỉ được phép chấm công cho chính mình!', 'danger')
+                return redirect(url_for('chamcong_list'))
+        try:
+            conn = DatabaseConnection.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT nv.MaNhanVien, nv.HoTen, pb.TenPhongBan FROM NhanVien nv LEFT JOIN PhongBan pb ON nv.MaPhongBan = pb.MaPhongBan")
+            nhanviens = cursor.fetchall()
+            # Tạo dict MaNhanVien -> TenPhongBan để JS sử dụng
+            pb_map = {str(nv.MaNhanVien): nv.TenPhongBan for nv in nhanviens}
+            if request.method == 'POST':
+                cursor.execute("""
+                    INSERT INTO ChamCong (MaNhanVien, Ngay, GioVao, GioRa, TrangThai)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    request.form['MaNhanVien'],
+                    request.form['Ngay'],
+                    request.form['GioVao'],
+                    request.form['GioRa'],
+                    request.form.get('TrangThai', '')
+                ))
+                conn.commit()
+                conn.close()
+                from flask import flash
+                flash('Thêm chấm công thành công!', 'success')
+                return redirect(url_for('chamcong_list'))
             conn.close()
+            return render_template('chamcong_add.html', nhanviens=nhanviens, pb_map=pb_map)
+        except Exception as e:
             from flask import flash
-            flash('Thêm chấm công thành công!', 'success')
-            return redirect(url_for('chamcong_list'))
-        conn.close()
-        return render_template('chamcong_add.html', nhanviens=nhanviens, pb_map=pb_map)
-    except Exception as e:
-        from flask import flash
-        flash(f'Lỗi thêm chấm công: {str(e)}', 'danger')
-        return render_template('chamcong_add.html', nhanviens=[], pb_map={})
+            flash(f'Lỗi thêm chấm công: {str(e)}', 'danger')
+            return render_template('chamcong_add.html', nhanviens=[], pb_map={})
+    # GET request - hiển thị form thêm
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nv.MaNhanVien, nv.HoTen, pb.TenPhongBan FROM NhanVien nv LEFT JOIN PhongBan pb ON nv.MaPhongBan = pb.MaPhongBan")
+    nhanviens = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('chamcong_add.html', nhanviens=nhanviens, pb_map={})
 
 @app.route('/chamcong/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin', 'TruongPhong')
 def edit_chamcong(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -388,6 +447,8 @@ def edit_chamcong(id):
         return redirect(url_for('chamcong_list'))
 
 @app.route('/chamcong/delete/<int:id>', methods=['POST'])
+@login_required
+@require_roles('Admin', 'TruongPhong')
 def delete_chamcong(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -404,13 +465,14 @@ def delete_chamcong(id):
         return redirect(url_for('chamcong_list'))
 
 @app.route('/luong')
+@login_required
 def luong_list():
     try:
         conn = DatabaseConnection.get_connection()
         cursor = conn.cursor()
-        # Lấy danh sách nhân viên có lương
+        # Lấy danh sách nhân viên có lương, thêm ChucVu
         cursor.execute('''
-            SELECT nv.MaNhanVien, nv.HoTen, pb.TenPhongBan
+            SELECT nv.MaNhanVien, nv.HoTen, pb.TenPhongBan, nv.ChucVu
             FROM NhanVien nv
             LEFT JOIN PhongBan pb ON nv.MaPhongBan = pb.MaPhongBan
             WHERE EXISTS (SELECT 1 FROM Luong l WHERE l.MaNhanVien = nv.MaNhanVien)
@@ -434,6 +496,7 @@ def luong_list():
                 'MaNhanVien': ma_nv,
                 'HoTen': nv.HoTen,
                 'TenPhongBan': nv.TenPhongBan,
+                'ChucVu': nv.ChucVu,
                 'tong_luong': tong_luong,
                 'tong_phucap': tong_phucap,
                 'tong_khautru': tong_khautru,
@@ -447,6 +510,8 @@ def luong_list():
         return render_template('luong_list.html', nhanviens=[])
 
 @app.route('/luong/add', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin')
 def add_luong():
     try:
         conn = DatabaseConnection.get_connection()
@@ -454,6 +519,10 @@ def add_luong():
         cursor.execute("SELECT MaNhanVien, HoTen FROM NhanVien")
         nhanviens = cursor.fetchall()
         if request.method == 'POST':
+            luongcoban = float(request.form['LuongCoBan'])
+            phucap = float(request.form['PhuCap'])
+            khautru = float(request.form['KhauTru'])
+            luongthucnhan = luongcoban + phucap - khautru
             cursor.execute("""
                 INSERT INTO Luong (MaNhanVien, Thang, Nam, LuongCoBan, PhuCap, KhauTru, LuongThucNhan)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -461,10 +530,10 @@ def add_luong():
                 request.form['MaNhanVien'],
                 request.form['Thang'],
                 request.form['Nam'],
-                request.form['LuongCoBan'],
-                request.form['PhuCap'],
-                request.form['KhauTru'],
-                request.form['LuongThucNhan']
+                luongcoban,
+                phucap,
+                khautru,
+                luongthucnhan
             ))
             conn.commit()
             conn.close()
@@ -479,6 +548,8 @@ def add_luong():
         return render_template('luong_add.html', nhanviens=[])
 
 @app.route('/luong/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin')
 def edit_luong(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -486,16 +557,20 @@ def edit_luong(id):
         cursor.execute("SELECT MaNhanVien, HoTen FROM NhanVien")
         nhanviens = cursor.fetchall()
         if request.method == 'POST':
+            luongcoban = float(request.form['LuongCoBan'])
+            phucap = float(request.form['PhuCap'])
+            khautru = float(request.form['KhauTru'])
+            luongthucnhan = luongcoban + phucap - khautru
             cursor.execute("""
                 UPDATE Luong SET MaNhanVien=?, Thang=?, Nam=?, LuongCoBan=?, PhuCap=?, KhauTru=?, LuongThucNhan=? WHERE MaLuong=?
             """, (
                 request.form['MaNhanVien'],
                 request.form['Thang'],
                 request.form['Nam'],
-                request.form['LuongCoBan'],
-                request.form['PhuCap'],
-                request.form['KhauTru'],
-                request.form['LuongThucNhan'],
+                luongcoban,
+                phucap,
+                khautru,
+                luongthucnhan,
                 id
             ))
             conn.commit()
@@ -518,6 +593,8 @@ def edit_luong(id):
         return redirect(url_for('luong_list'))
 
 @app.route('/luong/delete/<int:id>', methods=['POST'])
+@login_required
+@require_roles('Admin')
 def delete_luong(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -534,6 +611,7 @@ def delete_luong(id):
         return redirect(url_for('luong_list'))
 
 @app.route('/danhgia')
+@login_required
 def danhgia_list():
     try:
         conn = DatabaseConnection.get_connection()
@@ -571,7 +649,13 @@ def danhgia_list():
         return render_template('danhgia_list.html', nhanviens=[])
 
 @app.route('/danhgia/add', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin', 'TruongPhong')
 def add_danhgia():
+    # Nếu là nhân viên, chỉ cho phép thêm cho chính mình
+    if session.get('role_id') == 3:
+        # ... kiểm tra và chỉ cho phép MaNhanVien = session['user_id'] hoặc session['username'] ...
+        pass
     try:
         conn = DatabaseConnection.get_connection()
         cursor = conn.cursor()
@@ -602,6 +686,8 @@ def add_danhgia():
         return render_template('danhgia_add.html', nhanviens=[])
 
 @app.route('/danhgia/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin', 'TruongPhong')
 def edit_danhgia(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -640,6 +726,8 @@ def edit_danhgia(id):
         return redirect(url_for('danhgia_list'))
 
 @app.route('/danhgia/delete/<int:id>', methods=['POST'])
+@login_required
+@require_roles('Admin', 'TruongPhong')
 def delete_danhgia(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -656,6 +744,7 @@ def delete_danhgia(id):
         return redirect(url_for('danhgia_list'))
 
 @app.route('/hopdong')
+@login_required
 def hopdong_list():
     try:
         conn = DatabaseConnection.get_connection()
@@ -693,6 +782,8 @@ def hopdong_list():
         return render_template('hopdong_list.html', nhanviens=[])
 
 @app.route('/hopdong/add', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin')
 def add_hopdong():
     try:
         conn = DatabaseConnection.get_connection()
@@ -725,6 +816,8 @@ def add_hopdong():
         return render_template('hopdong_add.html', nhanviens=[])
 
 @app.route('/hopdong/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin')
 def edit_hopdong(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -764,6 +857,8 @@ def edit_hopdong(id):
         return redirect(url_for('hopdong_list'))
 
 @app.route('/hopdong/delete/<int:id>', methods=['POST'])
+@login_required
+@require_roles('Admin')
 def delete_hopdong(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -780,6 +875,7 @@ def delete_hopdong(id):
         return redirect(url_for('hopdong_list'))
 
 @app.route('/donnghiphep')
+@login_required
 def donnghiphep_list():
     try:
         conn = DatabaseConnection.get_connection()
@@ -817,6 +913,8 @@ def donnghiphep_list():
         return render_template('donnghiphep_list.html', nhanviens=[])
 
 @app.route('/donnghiphep/add', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin', 'TruongPhong', 'NhanVien')
 def add_donnghiphep():
     try:
         conn = DatabaseConnection.get_connection()
@@ -824,15 +922,18 @@ def add_donnghiphep():
         cursor.execute("SELECT MaNhanVien, HoTen FROM NhanVien")
         nhanviens = cursor.fetchall()
         if request.method == 'POST':
+            # Nếu là nhân viên, chỉ cho phép tạo cho chính mình và trạng thái luôn là 'Chờ duyệt'
+            ma_nv = request.form['MaNhanVien']
+            if session.get('role_id') == 3:
+                ma_nv = session.get('ma_nhanvien')
             cursor.execute('''
                 INSERT INTO DonNghiPhep (MaNhanVien, NgayBatDau, NgayKetThuc, LyDo, TrangThai)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, N'Chờ duyệt')
             ''', (
-                request.form['MaNhanVien'],
+                ma_nv,
                 request.form['NgayBatDau'],
                 request.form['NgayKetThuc'],
-                request.form['LyDo'],
-                request.form['TrangThai']
+                request.form['LyDo']
             ))
             conn.commit()
             conn.close()
@@ -847,6 +948,8 @@ def add_donnghiphep():
         return render_template('donnghiphep_add.html', nhanviens=[])
 
 @app.route('/donnghiphep/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+@require_roles('Admin', 'TruongPhong')
 def edit_donnghiphep(id):
     try:
         conn = DatabaseConnection.get_connection()
@@ -884,7 +987,13 @@ def edit_donnghiphep(id):
         return redirect(url_for('donnghiphep_list'))
 
 @app.route('/donnghiphep/delete/<int:id>', methods=['POST'])
+@login_required
+@require_roles('Admin', 'TruongPhong', 'NhanVien')
 def delete_donnghiphep(id):
+    # Nếu là nhân viên, chỉ cho phép xóa đơn của mình
+    if session.get('role_id') == 3:
+        # ... kiểm tra quyền sở hữu đơn ...
+        pass
     try:
         conn = DatabaseConnection.get_connection()
         cursor = conn.cursor()
@@ -900,6 +1009,7 @@ def delete_donnghiphep(id):
         return redirect(url_for('donnghiphep_list'))
 
 @app.route('/baocao')
+@login_required
 def baocao():
     try:
         conn = get_db_connection()
@@ -928,6 +1038,12 @@ def baocao():
         from flask import flash
         flash(f'Lỗi: {str(e)}', 'danger')
         return render_template('baocao.html', tong_nv=0, tong_pb=0, tong_luong=0, tong_chamcong=0, tong_donnghiphep=0, tong_hopdong=0)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('Đã đăng xuất!', 'success')
+    return redirect(url_for('api.login'))
 
 if __name__ == '__main__':
     app.run(debug=True) 
